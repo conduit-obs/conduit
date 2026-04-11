@@ -1,0 +1,13 @@
+apiVersion: v2
+name: conduit-collector
+description: Conduit collector fleet with OpAMP auto-registration
+type: application
+version: 0.9.0
+appVersion: "0.9.0"
+maintainers:
+  - name: Conduit Team
+keywords:
+  - opentelemetry
+  - collector
+  - opamp
+  - fleet

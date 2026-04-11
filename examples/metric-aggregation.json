@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "name": "metric-rollup",
+      "signal": "metrics",
+      "receivers": [
+        {
+          "type": "otlp",
+          "protocol": "grpc",
+          "endpoint": "0.0.0.0:4317"
+        }
+      ],
+      "processors": [
+        {
+          "type": "metricstransform",
+          "settings": {
+            "transforms": [
+              {
+                "include": "http.server.request.duration",
+                "action": "update",
+                "new_name": "http.request.duration.aggregated",
+                "operations": [
+                  {
+                    "action": "aggregate_labels",
+                    "aggregation_type": "sum",
+                    "label_set": ["http.method", "http.status_code", "service.name"]
+                  }
+                ]
+              },
+              {
+                "include": "process.runtime.go.mem.heap_alloc",
+                "action": "update",
+                "operations": [
+                  {
+                    "action": "aggregate_labels",
+                    "aggregation_type": "mean",
+                    "label_set": ["service.name", "host.name"]
+                  }
+                ]
+              },
+              {
+                "include": "http.server.active_requests",
+                "action": "update",
+                "operations": [
+                  {
+                    "action": "toggle_scalar_data_type"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "batch",
+          "settings": {
+            "send_batch_size": 1024,
+            "timeout": "10s"
+          }
+        }
+      ],
+      "exporters": [
+        {
+          "type": "otlp",
+          "endpoint": "mimir.monitoring.svc:4317",
+          "settings": {
+            "protocol": "grpc",
+            "headers": {
+              "X-Scope-OrgID": "platform"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

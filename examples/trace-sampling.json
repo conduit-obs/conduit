@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "name": "sampled-traces",
+      "signal": "traces",
+      "receivers": [
+        {
+          "type": "otlp",
+          "protocol": "grpc",
+          "endpoint": "0.0.0.0:4317"
+        }
+      ],
+      "processors": [
+        {
+          "type": "probabilistic_sampler",
+          "settings": {
+            "sampling_percentage": 10,
+            "hash_seed": 22
+          }
+        },
+        {
+          "type": "batch",
+          "settings": {
+            "send_batch_size": 256,
+            "timeout": "3s"
+          }
+        }
+      ],
+      "exporters": [
+        {
+          "type": "otlp",
+          "endpoint": "tempo.tracing.svc:4317",
+          "settings": {
+            "protocol": "grpc",
+            "tls": {
+              "insecure": true
+            },
+            "sending_queue": {
+              "enabled": true,
+              "num_consumers": 4,
+              "queue_size": 5000
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

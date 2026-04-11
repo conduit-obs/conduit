@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "name": "logs-to-loki",
+      "signal": "logs",
+      "receivers": [
+        {
+          "type": "filelog",
+          "protocol": "file",
+          "endpoint": "/var/log/app/*.log",
+          "settings": {
+            "include": ["/var/log/app/*.log", "/var/log/app/**/*.log"],
+            "exclude": ["/var/log/app/debug.*"],
+            "start_at": "end",
+            "multiline": {
+              "line_start_pattern": "^\\d{4}-\\d{2}-\\d{2}"
+            },
+            "operators": [
+              {
+                "type": "regex_parser",
+                "regex": "^(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d+Z)\\s+(?P<severity>\\w+)\\s+(?P<message>.*)$"
+              }
+            ]
+          }
+        },
+        {
+          "type": "syslog",
+          "protocol": "tcp",
+          "endpoint": "0.0.0.0:54526",
+          "settings": {
+            "protocol_type": "rfc5424"
+          }
+        }
+      ],
+      "processors": [
+        {
+          "type": "batch",
+          "settings": {
+            "send_batch_size": 2048,
+            "timeout": "10s"
+          }
+        }
+      ],
+      "exporters": [
+        {
+          "type": "loki",
+          "endpoint": "http://loki-gateway.logging.svc:3100/loki/api/v1/push",
+          "settings": {
+            "labels": {
+              "attributes": {
+                "severity": "level",
+                "service.name": "service"
+              }
+            },
+            "tenant_id": "platform-team"
+          }
+        }
+      ]
+    }
+  ]
+}

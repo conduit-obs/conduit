@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "name": "kubernetes-infrastructure",
+      "signal": "metrics",
+      "receivers": [
+        {
+          "type": "k8s_events",
+          "protocol": "k8s_api",
+          "endpoint": "https://kubernetes.default.svc",
+          "settings": {
+            "auth_type": "serviceAccount",
+            "namespaces": ["default", "production", "staging"]
+          }
+        },
+        {
+          "type": "kubeletstats",
+          "protocol": "https",
+          "endpoint": "https://${env:K8S_NODE_NAME}:10250",
+          "settings": {
+            "auth_type": "serviceAccount",
+            "collection_interval": "20s",
+            "metric_groups": ["node", "pod", "container"],
+            "extra_metadata_labels": ["k8s.pod.uid", "k8s.container.name"]
+          }
+        }
+      ],
+      "processors": [
+        {
+          "type": "k8sattributes",
+          "settings": {
+            "auth_type": "serviceAccount",
+            "passthrough": false,
+            "extract": {
+              "metadata": [
+                "k8s.pod.name",
+                "k8s.pod.uid",
+                "k8s.namespace.name",
+                "k8s.node.name",
+                "k8s.deployment.name",
+                "k8s.statefulset.name"
+              ],
+              "labels": [
+                {
+                  "tag_name": "app",
+                  "key": "app.kubernetes.io/name",
+                  "from": "pod"
+                },
+                {
+                  "tag_name": "version",
+                  "key": "app.kubernetes.io/version",
+                  "from": "pod"
+                }
+              ]
+            },
+            "pod_association": [
+              {
+                "sources": [
+                  { "from": "resource_attribute", "name": "k8s.pod.ip" }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "batch",
+          "settings": {
+            "send_batch_size": 1024,
+            "timeout": "5s"
+          }
+        }
+      ],
+      "exporters": [
+        {
+          "type": "otlp",
+          "endpoint": "otel-collector.monitoring.svc:4317",
+          "settings": {
+            "protocol": "grpc",
+            "tls": {
+              "insecure": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

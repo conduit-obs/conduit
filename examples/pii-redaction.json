@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "name": "pii-redaction-traces",
+      "signal": "traces",
+      "receivers": [
+        {
+          "type": "otlp",
+          "protocol": "grpc",
+          "endpoint": "0.0.0.0:4317"
+        }
+      ],
+      "processors": [
+        {
+          "type": "transform",
+          "settings": {
+            "error_mode": "ignore",
+            "trace_statements": [
+              {
+                "context": "span",
+                "statements": [
+                  "replace_pattern(attributes[\"http.url\"], \"(email=)[^&]*\", \"${1}REDACTED\")",
+                  "replace_pattern(attributes[\"http.url\"], \"(ssn=)[^&]*\", \"${1}REDACTED\")",
+                  "replace_pattern(attributes[\"http.url\"], \"(password=)[^&]*\", \"${1}REDACTED\")",
+                  "replace_pattern(attributes[\"db.statement\"], \"'\\d{3}-\\d{2}-\\d{4}'\", \"'XXX-XX-XXXX'\")",
+                  "replace_pattern(attributes[\"db.statement\"], \"'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}'\", \"'REDACTED@EMAIL.COM'\")"
+                ]
+              }
+            ],
+            "log_statements": [
+              {
+                "context": "log",
+                "statements": [
+                  "replace_pattern(body, \"\\b\\d{3}-\\d{2}-\\d{4}\\b\", \"XXX-XX-XXXX\")",
+                  "replace_pattern(body, \"\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b\", \"REDACTED@EMAIL.COM\")",
+                  "replace_pattern(body, \"\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\\b\", \"XXXX-XXXX-XXXX-XXXX\")"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "exporters": [
+        {
+          "type": "otlp",
+          "endpoint": "otel-collector.monitoring.svc:4317",
+          "settings": {
+            "protocol": "grpc",
+            "tls": {
+              "insecure": false,
+              "ca_file": "/etc/tls/ca.crt"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

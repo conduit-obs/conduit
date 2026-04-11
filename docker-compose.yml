@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-conduit}
+      POSTGRES_USER: ${POSTGRES_USER:-conduit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-conduit-dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-conduit}"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  conduit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${API_PORT:-8080}:8080"
+      - "${OPAMP_PORT:-4320}:4320"
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:-conduit}:${POSTGRES_PASSWORD:-conduit-dev}@postgres:5432/${POSTGRES_DB:-conduit}?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      API_LISTEN_ADDR: ":8080"
+      CONDUIT_JWT_ISSUER: ${JWT_ISSUER:-conduit}
+      CONDUIT_JWT_AUDIENCE: ${JWT_AUDIENCE:-conduit-api}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mock-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["conduit", "mock-agents"]
+    environment:
+      CONDUIT_SERVER: "http://conduit:8080"
+      MOCK_AGENT_COUNT: ${MOCK_AGENT_COUNT:-10}
+      MOCK_HEARTBEAT_INTERVAL: ${MOCK_HEARTBEAT_INTERVAL:-15}
+    depends_on:
+      conduit:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  pgdata:
+  redisdata:

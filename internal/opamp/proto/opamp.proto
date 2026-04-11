@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package opamp;
+
+option go_package = "github.com/conduit-obs/conduit/internal/opamp/proto";
+
+// Simplified OpAMP protocol messages for Phase 1.
+
+message AgentToServer {
+  string instance_uid = 1;
+  string effective_config = 2;
+  int64 sequence_num = 3;
+}
+
+message ServerToAgent {
+  string instance_uid = 1;
+  string remote_config = 2;
+  int64 sequence_num = 3;
+}
+
+service OpAMPService {
+  rpc Connect(stream AgentToServer) returns (stream ServerToAgent);
+}

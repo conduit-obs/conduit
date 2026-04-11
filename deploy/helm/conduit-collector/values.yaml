@@ -1,0 +1,53 @@
+controlPlane:
+  url: "https://conduit.example.com"
+  token: ""
+  tokenSecret: ""
+
+mode: DaemonSet  # DaemonSet or Deployment
+
+replicaCount: 3  # Only used when mode=Deployment
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.100.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  otlpGrpcPort: 4317
+  otlpHttpPort: 4318
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+probes:
+  liveness:
+    port: 13133
+    path: /
+    initialDelaySeconds: 10
+    periodSeconds: 15
+  readiness:
+    port: 13133
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+env: []

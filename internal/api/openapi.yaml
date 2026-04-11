@@ -1,0 +1,747 @@
+openapi: 3.0.3
+info:
+  title: Conduit API
+  description: OpenTelemetry fleet management control plane API
+  version: 0.9.0
+  contact:
+    name: Conduit Team
+  license:
+    name: Apache 2.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Agent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [registered, connected, unhealthy, disconnected, deregistered] }
+        labels: { type: object, additionalProperties: { type: string } }
+        capabilities: { type: string }
+        health_score: { type: integer }
+        topology: { type: string }
+        last_heartbeat: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Fleet:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        name: { type: string }
+        selector: { type: string }
+        variables: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ConfigIntent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        name: { type: string }
+        version: { type: integer }
+        intent_json: { type: string }
+        compiled_yaml: { type: string }
+        promoted: { type: boolean }
+        tags: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+
+    Rollout:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        fleet_id: { type: string, format: uuid }
+        intent_id: { type: string, format: uuid }
+        status: { type: string, enum: [scheduled, in_progress, paused, completed, failed] }
+        target_count: { type: integer }
+        completed_count: { type: integer }
+        strategy: { type: string }
+        scheduled_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    Template:
+      type: object
+      properties:
+        metadata:
+          type: object
+          properties:
+            name: { type: string }
+            version: { type: string }
+            description: { type: string }
+            category: { type: string }
+        parameters:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              type: { type: string }
+              description: { type: string }
+              required: { type: boolean }
+              default: {}
+        intent:
+          type: object
+
+    PolicyPack:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        version: { type: string }
+        description: { type: string }
+        pack_json: { type: string }
+
+    Webhook:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        url: { type: string, format: uri }
+        events: { type: array, items: { type: string } }
+        active: { type: boolean }
+
+    Tenant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        rate_limit: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    Version:
+      type: object
+      properties:
+        version: { type: string }
+        build_time: { type: string }
+        git_commit: { type: string }
+        go_version: { type: string }
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /api/v1/version:
+    get:
+      summary: Get server version
+      security: []
+      responses:
+        '200':
+          description: Version info
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Version' }
+
+  /api/v1/metrics:
+    get:
+      summary: Get system metrics
+      security: []
+      responses:
+        '200':
+          description: System metrics including cache stats
+
+  /api/v1/agents:
+    get:
+      summary: List agents
+      parameters:
+        - name: capability
+          in: query
+          schema: { type: string }
+        - name: min_health
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Agent' }
+    post:
+      summary: Register an agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                labels: { type: object, additionalProperties: { type: string } }
+            example:
+              name: collector-prod-01
+              labels: { env: production, region: us-east-1 }
+      responses:
+        '201':
+          description: Agent registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+
+  /api/v1/agents/{id}:
+    patch:
+      summary: Update agent labels
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                labels: { type: object, additionalProperties: { type: string } }
+      responses:
+        '200':
+          description: Agent updated
+    delete:
+      summary: Deregister (soft-delete) an agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Agent deregistered
+
+  /api/v1/config/intents:
+    get:
+      summary: List config intents
+      parameters:
+        - name: tag
+          in: query
+          schema: { type: string }
+          description: Filter by tag
+      responses:
+        '200':
+          description: Config intent list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ConfigIntent' }
+    post:
+      summary: Create config intent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, intent]
+              properties:
+                name: { type: string }
+                intent: { type: object }
+                tags: { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: Intent created
+
+  /api/v1/config/intents/{name}/promote:
+    post:
+      summary: Promote latest version of an intent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Intent promoted
+
+  /api/v1/config/intents/{id}/tags:
+    patch:
+      summary: Update tags on a config intent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tags: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Tags updated
+
+  /api/v1/config/intents/{name}/diff:
+    get:
+      summary: Diff two versions of an intent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: v1
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: v2
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Unified diff
+
+  /api/v1/config/intents/{name}/export:
+    get:
+      summary: Export intent with all versions
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Portable JSON bundle
+
+  /api/v1/config/intents/import:
+    post:
+      summary: Import intent bundle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                versions: { type: array }
+      responses:
+        '201':
+          description: Intent imported
+
+  /api/v1/config/compile:
+    post:
+      summary: Compile intent to OTel YAML (supports inheritance)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Compiled YAML
+
+  /api/v1/config/validate:
+    post:
+      summary: Validate intent without persisting
+      responses:
+        '200':
+          description: Validation result
+
+  /api/v1/fleets:
+    get:
+      summary: List fleets
+      responses:
+        '200':
+          description: Fleet list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Fleet' }
+    post:
+      summary: Create a fleet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                selector: { type: object, additionalProperties: { type: string } }
+            example:
+              name: production
+              selector: { env: production }
+      responses:
+        '201':
+          description: Fleet created
+
+  /api/v1/fleets/{id}/agents:
+    get:
+      summary: Get agents matched by fleet selector
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Matched agents
+
+  /api/v1/rollouts:
+    get:
+      summary: List rollouts
+      parameters:
+        - name: fleet_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [scheduled, in_progress, paused, completed, failed] }
+      responses:
+        '200':
+          description: Rollout list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Rollout' }
+    post:
+      summary: Create rollout (supports scheduled_at for scheduling)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fleet_id, intent_id]
+              properties:
+                fleet_id: { type: string, format: uuid }
+                intent_id: { type: string, format: uuid }
+                strategy: { type: string, enum: [all-at-once, canary] }
+                canary_percent: { type: integer }
+                scheduled_at: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Rollout created
+
+  /api/v1/rollouts/{id}:
+    get:
+      summary: Get rollout status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Rollout details
+
+  /api/v1/rollouts/{id}/history:
+    get:
+      summary: Get rollout status transition history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Rollout history
+
+  /api/v1/rollouts/{id}/pause:
+    post:
+      summary: Pause an in-progress rollout
+      responses:
+        '200':
+          description: Rollout paused
+
+  /api/v1/rollouts/{id}/resume:
+    post:
+      summary: Resume a paused rollout
+      responses:
+        '200':
+          description: Rollout resumed
+
+  /api/v1/rollouts/{id}/cancel:
+    post:
+      summary: Cancel a rollout
+      responses:
+        '200':
+          description: Rollout cancelled
+
+  /api/v1/topology:
+    get:
+      summary: Get agent topology tree (region > zone > cluster)
+      responses:
+        '200':
+          description: Hierarchical topology tree
+
+  /api/v1/templates:
+    get:
+      summary: List pipeline templates
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Template list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Template' }
+    post:
+      summary: Create a pipeline template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Template' }
+      responses:
+        '201':
+          description: Template created
+
+  /api/v1/templates/{name}:
+    get:
+      summary: Get latest version of a template
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Template details
+
+  /api/v1/templates/{name}/versions:
+    get:
+      summary: Get all versions of a template
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Template versions
+
+  /api/v1/templates/{name}/deprecate:
+    patch:
+      summary: Deprecate a template
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Template deprecated
+
+  /api/v1/policy-packs:
+    get:
+      summary: List policy packs
+      responses:
+        '200':
+          description: Policy pack list
+    post:
+      summary: Create a policy pack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyPack' }
+      responses:
+        '201':
+          description: Policy pack created
+
+  /api/v1/policy-packs/{name}:
+    get:
+      summary: Get a policy pack
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Policy pack details
+
+  /api/v1/tenants:
+    post:
+      summary: Create a tenant (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '201':
+          description: Tenant created
+
+  /api/v1/tenants/{id}:
+    get:
+      summary: Get tenant by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Tenant details
+
+  /api/v1/tenants/{id}/usage:
+    get:
+      summary: Get tenant rate limiting usage stats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Usage statistics
+
+  /api/v1/api-keys:
+    get:
+      summary: List API keys
+      responses:
+        '200':
+          description: API key list
+    post:
+      summary: Create an API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                permissions: { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: API key created (plaintext returned once)
+
+  /api/v1/webhooks:
+    get:
+      summary: List webhooks
+      responses:
+        '200':
+          description: Webhook list
+    post:
+      summary: Create a webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, url]
+              properties:
+                name: { type: string }
+                url: { type: string, format: uri }
+                events: { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: Webhook created
+
+  /api/v1/webhooks/{id}:
+    delete:
+      summary: Delete a webhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Webhook deleted
+
+  /api/v1/agents/{id}/config-history:
+    get:
+      summary: Get agent config history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Config history
+
+  /api/v1/batch:
+    post:
+      summary: Execute batch operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      op: { type: string, enum: [register-agent, update-labels, create-intent] }
+                      data: { type: object }
+      responses:
+        '200':
+          description: Batch results
+
+  /api/v1/events/stream:
+    get:
+      summary: WebSocket event stream
+      description: Real-time event streaming via WebSocket
+      responses:
+        '101':
+          description: WebSocket upgrade
+
+  /api/v1/docs:
+    get:
+      summary: Swagger UI documentation
+      security: []
+      responses:
+        '200':
+          description: Swagger UI HTML page

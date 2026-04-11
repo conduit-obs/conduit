@@ -1,0 +1,40 @@
+# Binaries
+bin/
+conduit
+*.exe
+
+# Test output
+coverage.out
+*.test
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+
+# Build artifacts
+*.tar.gz
+sbom.json
+checksums.txt
+
+# Auto-generated dev keys
+.conduit/keys/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Video files
+*.mov
+*.mp4
+
+# Claude
+.claude/

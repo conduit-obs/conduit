@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "name": "fanout-to-multiple-backends",
+      "signal": "traces",
+      "receivers": [
+        {
+          "type": "otlp",
+          "protocol": "grpc",
+          "endpoint": "0.0.0.0:4317"
+        },
+        {
+          "type": "otlp",
+          "protocol": "http",
+          "endpoint": "0.0.0.0:4318"
+        }
+      ],
+      "processors": [
+        {
+          "type": "batch",
+          "settings": {
+            "send_batch_size": 512,
+            "timeout": "5s"
+          }
+        }
+      ],
+      "exporters": [
+        {
+          "type": "datadog",
+          "endpoint": "https://api.datadoghq.com",
+          "settings": {
+            "api_key": "${env:DD_API_KEY}",
+            "site": "datadoghq.com",
+            "tags": ["env:production", "team:platform"]
+          }
+        },
+        {
+          "type": "otlp",
+          "endpoint": "https://otlp.nr-data.net:4317",
+          "settings": {
+            "protocol": "grpc",
+            "headers": {
+              "api-key": "${env:NEW_RELIC_LICENSE_KEY}"
+            },
+            "compression": "gzip"
+          }
+        },
+        {
+          "type": "debug",
+          "endpoint": "stdout",
+          "settings": {
+            "verbosity": "basic",
+            "sampling_initial": 5,
+            "sampling_thereafter": 200
+          }
+        }
+      ]
+    }
+  ]
+}

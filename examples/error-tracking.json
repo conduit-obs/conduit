@@ -1,0 +1,69 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "name": "error-only-traces-to-sentry",
+      "signal": "traces",
+      "receivers": [
+        {
+          "type": "otlp",
+          "protocol": "grpc",
+          "endpoint": "0.0.0.0:4317"
+        }
+      ],
+      "processors": [
+        {
+          "type": "filter",
+          "settings": {
+            "error_mode": "ignore",
+            "traces": {
+              "span": [
+                "status.code == STATUS_CODE_ERROR",
+                "attributes[\"http.status_code\"] >= 500"
+              ]
+            }
+          }
+        },
+        {
+          "type": "attributes",
+          "settings": {
+            "actions": [
+              {
+                "key": "sentry.environment",
+                "value": "production",
+                "action": "upsert"
+              },
+              {
+                "key": "sentry.release",
+                "from_attribute": "service.version",
+                "action": "upsert"
+              }
+            ]
+          }
+        },
+        {
+          "type": "batch",
+          "settings": {
+            "send_batch_size": 128,
+            "timeout": "2s"
+          }
+        }
+      ],
+      "exporters": [
+        {
+          "type": "otlp",
+          "endpoint": "https://sentry.io/api/0/envelope/",
+          "settings": {
+            "protocol": "http",
+            "headers": {
+              "sentry-key": "${env:SENTRY_DSN_KEY}"
+            },
+            "tls": {
+              "insecure": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
